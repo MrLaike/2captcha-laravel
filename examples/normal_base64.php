@@ -7,10 +7,11 @@ require(__DIR__ . '/../src/autoloader.php');
 $image = __DIR__ . '/images/normal.jpg';
 $base64 = base64_encode(file_get_contents($image));
 
-$solver = new \TwoCaptcha\TwoCaptcha('YOUR_API_KEY');
+/** @var \TwoCaptcha\Classes\Resolvers\Normal $solver */
+$solver = app(\TwoCaptcha\Classes\Resolvers\Normal::class);
 
 try {
-    $result = $solver->normal(['base64' => $base64]);
+    $result = $solver->imageBase64(['base64' => $base64])->resolve();
 } catch (\Exception $e) {
     die($e->getMessage());
 }

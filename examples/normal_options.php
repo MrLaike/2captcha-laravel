@@ -4,9 +4,18 @@ set_time_limit(130);
 
 require(__DIR__ . '/../src/autoloader.php');
 
-$solver = new \TwoCaptcha\TwoCaptcha('YOUR_API_KEY');
+/** @var \TwoCaptcha\Classes\Resolvers\Normal $solver */
+$solver = app(\TwoCaptcha\Classes\Resolvers\Normal::class);
 
 try {
+    $result = $solver->imagesPath(__DIR__ . '/images/normal_2.jpg')
+        ->numeric(4)
+        ->minLen(4)
+        ->maxLen(20)
+        ->phrase(1)
+        ->caseSensitive()
+        ->resolve()
+        ;
     $result = $solver->normal([
         'file'          => __DIR__ . '/images/normal_2.jpg',
         'numeric'       => 4,
