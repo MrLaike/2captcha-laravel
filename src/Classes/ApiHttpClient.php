@@ -10,17 +10,22 @@ use TwoCaptcha\Classes\Contracts\ApiClient as ApiClientInterface;
 class ApiHttpClient implements ApiClientInterface
 {
     /** API server (exp. http://2captcha.com) */
-    private string $server;
-    private PendingRequest $client;
 
-    public function __construct(string $server)
+    public function __construct(
+        private PendingRequest $client,
+        private string $server = 'http://2captcha.com',
+    ) {
+    }
+
+    public function server(string $value): self
     {
-        $this->server = $server;
+        $this->server = $value;
+        return $this;
     }
 
     public function async(): self
     {
-    $this->client->async();
+        $this->client->async();
         return $this;
     }
 

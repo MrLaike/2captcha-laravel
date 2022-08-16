@@ -12,11 +12,6 @@ use TwoCaptcha\Exception\ValidationException;
 
 class Normal extends TwoCaptcha
 {
-    private string|array $imagesPath;
-    private array $options;
-    private bool $caseSensitive;
-    private bool $calculative;
-
     /**
      * Wrapper for solving normal captcha (image)
      *
@@ -27,22 +22,18 @@ class Normal extends TwoCaptcha
      */
     public function resolve()
     {
-        if ($this->imagesPath) {
-            $captcha = [
-                'file' => $this->imagesPath,
-            ];
+        $this->requireFileOrBase64($this->options);
+
+        if (empty($this->options['method'])) {
+            $this->options['method'] = 'post';
         }
 
-        $this->requireFileOrBase64($captcha);
-
-        $this->options['method'] = empty($captcha['base64']) ? 'post' : 'base64';
-
-        return $this->solve($captcha);
+        return $this->solve($this->options);
     }
 
     public function apiKey(string $value): self
     {
-        $this->options['apiKey'] = $value;
+        $this->options['key'] = $value;
         return $this;
     }
 
@@ -64,7 +55,7 @@ class Normal extends TwoCaptcha
 
     public function caseSensitive(): self
     {
-        $this->caseSensitive = true;
+        $this->options['regsense'] = true;
         return $this;
     }
 
@@ -81,14 +72,7 @@ class Normal extends TwoCaptcha
         return $this;
     }
 
-    /**
-     * tells the server to send the response as JSON
-     * default server will send the response as plain text
-     */
-    public function json()
-    {
-        $this->options['json'] = 1;
-    }
+
     /**
      * minimum number of symbols in captcha
      */
@@ -106,7 +90,6 @@ class Normal extends TwoCaptcha
         $this->options['max_len'] = $value;
         return $this;
     }
-
 
     /**
      * captcha requires calculation (e.g. type the result 4 + 8 = )
@@ -129,12 +112,15 @@ class Normal extends TwoCaptcha
 
     public function imagesPath(string|array $imagesPath): self
     {
-        $this->imagesPath = $imagesPath;
+        $this->method('post');
+        $this->options['file'] = $imagesPath;
         return $this;
     }
 
-    public function imageBase64()
+    public function imageBase64($imageBase64): self
     {
-        
+        $this->method('base64');
+        $this->options['body'] = $imageBase64;
+        return $this;
     }
 }

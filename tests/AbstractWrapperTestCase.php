@@ -2,10 +2,10 @@
 
 namespace TwoCaptcha\Tests;
 
-use TwoCaptcha\ApiClient;
-use TwoCaptcha\Exception\ValidationException;
-use TwoCaptcha\TwoCaptcha;
 use PHPUnit\Framework\TestCase;
+use TwoCaptcha\Classes\ApiClient;
+use TwoCaptcha\Classes\TwoCaptcha;
+use TwoCaptcha\Exception\ValidationException;
 
 abstract class AbstractWrapperTestCase extends TestCase
 {

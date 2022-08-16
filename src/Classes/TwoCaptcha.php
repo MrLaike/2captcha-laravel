@@ -1,394 +1,147 @@
 <?php
 
-namespace TwoCaptcha;
+namespace TwoCaptcha\Classes;
 
 use Exception;
+use Illuminate\Support\Collection;
+use TwoCaptcha\Classes\Contracts\ApiClient as ApiClientInterface;
 use TwoCaptcha\Exception\ApiException;
 use TwoCaptcha\Exception\NetworkException;
 use TwoCaptcha\Exception\TimeoutException;
 use TwoCaptcha\Exception\ValidationException;
 
+use function mb_strpos;
+use function mb_substr;
+
 /**
  * Class TwoCaptcha
  * @package TwoCaptcha
  */
-class TwoCaptcha
+abstract class TwoCaptcha
 {
     /**
      * API KEY
-     *
-     * @string
      */
-    private $apiKey;
+    private string $apiKey;
 
-    /**
-     * API server URL: http://2captcha.com (default) or http://rucaptcha.com
-     *
-     * @string
-     */
-    private $server = 'http://2captcha.com';
+    protected array $options;
 
     /**
      * ID of software developer. Developers who integrated their software
      * with our service get reward: 10% of spendings of their software users.
-     *
-     * @integer
      */
-    private $softId;
+    private int $softId;
 
     /**
      * URL to which the result will be sent
-     *
-     * @string
      */
-    private $callback;
+    private string $callback;
 
     /**
      * How long should wait for captcha result (in seconds)
-     *
-     * @integer
      */
-    private $defaultTimeout = 120;
+    private int $defaultTimeout = 120;
 
     /**
      * How long should wait for recaptcha result (in seconds)
-     *
-     * @integer
      */
-    private $recaptchaTimeout = 600;
+    private int $recaptchaTimeout = 600;
 
     /**
      * How often do requests to `/res.php` should be made
      * in order to check if a result is ready (in seconds)
-     *
-     * @integer
      */
-    private $pollingInterval = 10;
+    private int $pollingInterval = 10;
 
     /**
      * Helps to understand if there is need of waiting
      * for result or not (because callback was used)
-     *
-     * @integer
      */
-    private $lastCaptchaHasCallback;
+    private int $lastCaptchaHasCallback;
 
-    /**
-     * Network client
-     *
-     * @resource
-     */
-    private $apiClient;
-
-    /**
-     * TwoCaptcha constructor.
-     * @param $options string|array
-     */
-    public function __construct($options)
+    public function __construct(
+        private ApiClientInterface $apiClient
+    )
     {
-        if (is_string($options)) {
-            $options = [
-                'apiKey' => $options,
-            ];
-        }
+        $options['apiKey'] = config('captcha.apiKey');
 
-        if (!empty($options['server'])) $this->server = $options['server'];
-        if (!empty($options['apiKey'])) $this->apiKey = $options['apiKey'];
         if (!empty($options['softId'])) $this->softId = $options['softId'];
         if (!empty($options['callback'])) $this->callback = $options['callback'];
-        if (!empty($options['defaultTimeout'])) $this->defaultTimeout = $options['defaultTimeout'];
-        if (!empty($options['recaptchaTimeout'])) $this->recaptchaTimeout = $options['recaptchaTimeout'];
-        if (!empty($options['pollingInterval'])) $this->pollingInterval = $options['pollingInterval'];
 
-        $this->apiClient = new ApiClient($this->server);
     }
 
-    public function setHttpClient($apiClient)
+    public function pollingInterval(int $pollingInterval): self
+    {
+        $this->pollingInterval = $pollingInterval;
+        return $this;
+    }
+
+    public function recaptchaTimeout(int $timeout): self
+    {
+        $this->recaptchaTimeout = $timeout;
+        return $this;
+    }
+
+    public function defaultTimeout(int $timeout): self
+    {
+        $this->defaultTimeout = $timeout;
+        return $this;
+    }
+
+    public function apiKey(string $apiKey): self
+    {
+        $this->apiKey = $apiKey;
+        return $this;
+    }
+
+    public function apiClient(ApiClientInterface $apiClient): self
     {
         $this->apiClient = $apiClient;
+        return $this;
     }
 
     /**
-     * Wrapper for solving normal captcha (image)
-     *
-     * @param $captcha
-     * @return \stdClass
-     * @throws ApiException
-     * @throws NetworkException
-     * @throws TimeoutException
-     * @throws ValidationException
+     * tells the server to send the response as JSON
+     * default server will send the response as plain text
      */
-    public function normal($captcha)
+    public function json()
     {
-        if (is_string($captcha)) {
-            $captcha = [
-                'file' => $captcha,
-            ];
-        }
-
-        $this->requireFileOrBase64($captcha);
-
-        $captcha['method'] = empty($captcha['base64']) ? 'post' : 'base64';
-
-        return $this->solve($captcha);
+        $this->options['json'] = 1;
     }
 
     /**
-     * Wrapper for solving text captcha
-     *
-     * @param $captcha
-     * @return \stdClass
-     * @throws ApiException
-     * @throws NetworkException
-     * @throws TimeoutException
-     * @throws ValidationException
+     * Language code. See here https://2captcha.com/2captcha-api#language
      */
-    public function text($captcha)
+    public function lang(string $value): self
     {
-        if (is_string($captcha)) {
-            $captcha = [
-                'text' => $captcha,
-            ];
-        }
-
-        $captcha['method'] = 'post';
-
-        return $this->solve($captcha);
+        $this->options['lang'] = $value;
+        return $this;
     }
 
-    /**
-     * Wrapper for solving ReCaptcha
-     *
-     * @param $captcha
-     * @return \stdClass
-     * @throws ApiException
-     * @throws NetworkException
-     * @throws TimeoutException
-     * @throws ValidationException
-     */
-    public function recaptcha($captcha)
-    {
-        $captcha['method'] = 'userrecaptcha';
+    public abstract function resolve();
 
-        return $this->solve($captcha, ['timeout' => $this->recaptchaTimeout]);
-    }
 
-    /**
-     * Wrapper for solving FunCaptcha
-     *
-     * @param $captcha
-     * @return \stdClass
-     * @throws ApiException
-     * @throws NetworkException
-     * @throws TimeoutException
-     * @throws ValidationException
-     */
-    public function funcaptcha($captcha)
-    {
-        $captcha['method'] = 'funcaptcha';
 
-        return $this->solve($captcha);
-    }
 
-    /**
-     * Wrapper for solving GeeTest
-     *
-     * @param $captcha
-     * @return \stdClass
-     * @throws ApiException
-     * @throws NetworkException
-     * @throws TimeoutException
-     * @throws ValidationException
-     */
-    public function geetest($captcha)
-    {
-        $captcha['method'] = 'geetest';
 
-        return $this->solve($captcha);
-    }
 
-    /**
-     * Wrapper for solving hCaptcha
-     *
-     * @param $captcha
-     * @return \stdClass
-     * @throws ApiException
-     * @throws NetworkException
-     * @throws TimeoutException
-     * @throws ValidationException
-     */
-    public function hcaptcha($captcha)
-    {
-        $captcha['method'] = 'hcaptcha';
 
-        return $this->solve($captcha);
-    }
 
-    /**
-     * Wrapper for solving KeyCaptcha
-     *
-     * @param $captcha
-     * @return \stdClass
-     * @throws ApiException
-     * @throws NetworkException
-     * @throws TimeoutException
-     * @throws ValidationException
-     */
-    public function keycaptcha($captcha)
-    {
-        $captcha['method'] = 'keycaptcha';
 
-        return $this->solve($captcha);
-    }
 
-    /**
-     * Wrapper for solving Capy captcha
-     *
-     * @param $captcha
-     * @return \stdClass
-     * @throws ApiException
-     * @throws NetworkException
-     * @throws TimeoutException
-     * @throws ValidationException
-     */
-    public function capy($captcha)
-    {
-        $captcha['method'] = 'capy';
 
-        return $this->solve($captcha);
-    }
-
-    /**
-     * Wrapper for solving grid captcha
-     *
-     * @param $captcha
-     * @return \stdClass
-     * @throws ApiException
-     * @throws NetworkException
-     * @throws TimeoutException
-     * @throws ValidationException
-     */
-    public function grid($captcha)
-    {
-        if (is_string($captcha)) {
-            $captcha = [
-                'file' => $captcha,
-            ];
-        }
-
-        $this->requireFileOrBase64($captcha);
-
-        $captcha['method'] = empty($captcha['base64']) ? 'post' : 'base64';
-
-        return $this->solve($captcha);
-    }
-
-    /**
-     * Wrapper for solving canvas captcha
-     *
-     * @param $captcha
-     * @return \stdClass
-     * @throws ApiException
-     * @throws NetworkException
-     * @throws TimeoutException
-     * @throws ValidationException
-     */
-    public function canvas($captcha)
-    {
-        if (is_string($captcha)) {
-            $captcha = [
-                'file' => $captcha,
-            ];
-        }
-
-        $this->requireFileOrBase64($captcha);
-
-        $captcha['method'] = empty($captcha['base64']) ? 'post' : 'base64';
-        $captcha['recaptcha']=1;
-        $captcha['canvas'] = 1;
-
-        if ( empty($captcha['hintText']) && empty($captcha['hintImg']) ) {
-            throw new ValidationException('At least one of parameters: hintText or hintImg required!');
-        } 
-        
-        return $this->solve($captcha);
-    }
-
-    /**
-     * Wrapper for solving coordinates captcha
-     *
-     * @param $captcha
-     * @return \stdClass
-     * @throws ApiException
-     * @throws NetworkException
-     * @throws TimeoutException
-     * @throws ValidationException
-     */
-    public function coordinates($captcha)
-    {
-        if (is_string($captcha)) {
-            $captcha = [
-                'file' => $captcha,
-            ];
-        }
-
-        $this->requireFileOrBase64($captcha);
-
-        $captcha['method'] = empty($captcha['base64']) ? 'post' : 'base64';
-        $captcha['coordinatescaptcha'] = 1;
-
-        return $this->solve($captcha);
-    }
-
-    /**
-     * Wrapper for solving RotateCaptcha
-     *
-     * @param $captcha
-     * @return \stdClass
-     * @throws ApiException
-     * @throws NetworkException
-     * @throws TimeoutException
-     * @throws ValidationException
-     */
-    public function rotate($captcha)
-    {
-        if (is_string($captcha)) {
-            $captcha = [
-                'file' => $captcha,
-            ];
-        }
-
-        if (!$this->isArrayAssoc($captcha)) {
-            $captcha = [
-                'files' => $captcha,
-            ];
-        }
-
-        if (isset($captcha['file'])) {
-            $captcha['files'] = [$captcha['file']];
-            unset($captcha['file']);
-        }
-
-        $this->prepareFilesList($captcha);
-
-        $captcha['method'] = 'rotatecaptcha';
-
-        return $this->solve($captcha);
-    }
 
     /**
      * Sends captcha to `/in.php` and waits for it's result.
      * This helper can be used insted of manual using of `send` and `getResult` functions.
      *
-     * @param $captcha
-     * @param array $waitOptions
      * @return \stdClass
      * @throws ApiException
      * @throws NetworkException
      * @throws TimeoutException
      * @throws ValidationException
      */
-    public function solve($captcha, $waitOptions = [])
+    public function solve(array $captcha, array $waitOptions = [])
     {
         $result = new \stdClass();
 
@@ -439,13 +192,12 @@ class TwoCaptcha
     /**
      * Sends captcha to '/in.php', and returns its `id`
      *
-     * @param $captcha
      * @return string
      * @throws ApiException
      * @throws NetworkException
      * @throws ValidationException
      */
-    public function send($captcha)
+    public function send(array $captcha)
     {
         $this->sendAttachDefaultParams($captcha);
 
@@ -471,7 +223,7 @@ class TwoCaptcha
      * @throws ApiException
      * @throws NetworkException
      */
-    public function getResult($id)
+    public function getResult(string|int $id)
     {
         $response = $this->res([
             'action' => 'get',
@@ -492,11 +244,10 @@ class TwoCaptcha
     /**
      * Gets account's balance
      *
-     * @return float
      * @throws ApiException
      * @throws NetworkException
      */
-    public function balance()
+    public function balance(): float
     {
         $response = $this->res('getbalance');
 
@@ -541,10 +292,8 @@ class TwoCaptcha
 
     /**
      * Attaches default parameters (passed in constructor) to request
-     *
-     * @param $captcha
      */
-    private function sendAttachDefaultParams(&$captcha)
+    private function sendAttachDefaultParams(array &$captcha)
     {
         $captcha['key'] = $this->apiKey;
 
@@ -570,7 +319,7 @@ class TwoCaptcha
      * @param string $key
      * @throws ValidationException
      */
-    private function requireFileOrBase64($captcha, $key = 'file')
+    protected function requireFileOrBase64($captcha, $key = 'file')
     {
         if (!empty($captcha['base64'])) return;
 
@@ -589,7 +338,7 @@ class TwoCaptcha
      * @param $captcha
      * @throws ValidationException
      */
-    private function prepareFilesList(&$captcha)
+    protected function prepareFilesList(&$captcha)
     {
         $filesLimit = 9;
         $i = 0;

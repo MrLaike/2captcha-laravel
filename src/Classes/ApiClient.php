@@ -1,9 +1,11 @@
 <?php
 
-namespace TwoCaptcha;
+namespace TwoCaptcha\Classes;
 
 use TwoCaptcha\Exception\ApiException;
 use TwoCaptcha\Exception\NetworkException;
+
+use function mb_strpos;
 
 class ApiClient
 {

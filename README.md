@@ -42,12 +42,14 @@ require 'path/to/autoloader.php';
 
 ## Configuration
 `TwoCaptcha` instance can be created like this:
+
 ```php
-$solver = new \TwoCaptcha\TwoCaptcha('YOUR_API_KEY');
+$solver = new \TwoCaptcha\Classes\TwoCaptcha('YOUR_API_KEY');
 ```
 Also there are few options that can be configured:
+
 ```php
-$solver = new \TwoCaptcha\TwoCaptcha([
+$solver = new \TwoCaptcha\Classes\TwoCaptcha([
     'server'           => 'http://rucaptcha.com',
     'apiKey'           => 'YOUR_API_KEY',
     'softId'           => 123,
